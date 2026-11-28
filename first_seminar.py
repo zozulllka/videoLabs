@@ -1,7 +1,8 @@
 import subprocess
 import numpy as np
 from PIL import Image
-import os
+import pywt
+
 
 # Question 2)
 class ColorTranslator:
@@ -238,7 +239,7 @@ series = [5, 0, 0, 0, 2, 2, 7, 0, 0, 0, 0, 0, 0, 0, 0]
 # the output: [(5, 1), (0, 3), (2, 2), (7, 1), (0, 8)]
 
 
-# Question 8
+# Question 8)
 def mini_jpeg(gray, quality):
     h, w = gray.shape
     codec = BlockCodec(quality)
@@ -278,7 +279,7 @@ def test_mini_jpeg():
         # each symbol = value (2 bytes) + count (1 byte)
         print(f"mine quality {quality}: {symbols} symbols, ~{symbols*3} bytes, PSNR {psnr(gray, result):.2f} dB")
 
-test_mini_jpeg()
+#test_mini_jpeg()
 
 """
     results:
@@ -296,4 +297,53 @@ test_mini_jpeg()
 
     ffmpeg is smaller at the same PSNR because it uses huffman coding on the coefficients,
     I only use RLE and store every symbol with a fixed size.
+"""
+
+
+# Question 9)
+class DWT:
+    def __init__(self, wavelet="haar"):
+        self.wavelet = wavelet
+
+    def encode(self, image):
+        # LL = low-pass both ways
+        # LH = horizontal edges, HL = vertical edges, HH = diagonal edges
+        LL, (LH, HL, HH) = pywt.dwt2(image, self.wavelet)
+        return LL, LH, HL, HH
+
+    def decode(self, LL, LH, HL, HH):
+        return pywt.idwt2((LL, (LH, HL, HH)), self.wavelet)
+
+def test_dwt():
+    gray = np.array(Image.open("q8_gray.png"), dtype=float)
+    dwt = DWT()
+    LL, LH, HL, HH = dwt.encode(gray)
+
+    # decoding gives the original back
+    print("max difference after decode:", np.abs(dwt.decode(LL, LH, HL, HH) - gray).max())
+
+    # the detail subbands are mostly around 0, so I take abs and make them brighter to see something
+    LH_img = np.clip(np.abs(LH) * 4, 0, 255)
+    HL_img = np.clip(np.abs(HL) * 4, 0, 255)
+    HH_img = np.clip(np.abs(HH) * 4, 0, 255)
+
+    # 2x2 picture: LL top left, HL top right, LH bottom left, HH bottom right
+    top = np.hstack([LL, HL_img])
+    bottom = np.hstack([LH_img, HH_img])
+    Image.fromarray(np.vstack([top, bottom]).astype(np.uint8)).save("q9_subbands.png")
+
+test_dwt()
+"""
+    Output: max difference after decode: 1.7053025658242404e-13
+
+    Battle:
+    jpeg  q:v 31: 26351 bytes, PSNR 28.402473 dB, SSIM 0.917272
+    jpeg2000:     19560 bytes, PSNR 28.794414 dB, SSIM 0.905325
+
+    jpeg2000 compresses better but the whole world still uses jpeg because it came first and was already
+    implemented everywhere. Switching to a new format costs time, money and effort and people just don't
+    want to invest those resources. As a wise person said: 'In our industry's history, the best encoding
+    solution is not always the standardized nor most popular one. In a capitalist, globalized society,
+    the dominant codec often serves economic interests rather than being the most technically superior.'
+
 """
